@@ -1,0 +1,144 @@
+﻿//======= Copyright (c) Valve Corporation, All rights reserved. ===============
+
+// Purpose: Test SteamVR_Controller support.
+//=============================================================================
+
+using UnityEngine;
+using System.Collections.Generic;
+using Valve.VR;
+//测试手柄脚本
+
+
+
+public class SteamVR_TestController : MonoBehaviour
+{
+    //手柄索引
+    List<int> controllerIndices = new List<int>();
+    //引发设备连接事件
+    private void OnDeviceConnected(params object[] args)
+	{
+        // 参数为0的OpenVR系统索引
+
+        var index = (int)args[0];
+        
+        //OpenVR系统
+		var system = OpenVR.System;
+        //没有获取到则返回
+		if (system == null || system.GetTrackedDeviceClass((uint)index) != ETrackedDeviceClass.Controller)
+			return;
+
+        //参数1为是否连接
+		var connected = (bool)args[1];
+        //为真则Log连接到手柄的索引，打印其状态，并将该索引添加到手柄索引中
+		if (connected)
+		{
+            
+			Debug.Log(string.Format("Controller {0} connected.", index));
+			PrintControllerStatus(index);
+			controllerIndices.Add(index);
+		}
+		else
+		{
+			Debug.Log(string.Format("Controller {0} disconnected.", index));
+			PrintControllerStatus(index);
+			controllerIndices.Remove(index);
+		}
+	}
+
+	void OnEnable()
+	{
+		SteamVR_Utils.Event.Listen("device_connected", OnDeviceConnected);
+	}
+
+	void OnDisable()
+	{
+		SteamVR_Utils.Event.Remove("device_connected", OnDeviceConnected);
+	}
+
+	void PrintControllerStatus(int index)
+	{
+		var device = SteamVR_Controller.Input(index);
+		Debug.Log("index: " + device.index);
+		Debug.Log("connected: " + device.connected);
+		Debug.Log("hasTracking: " + device.hasTracking);
+		Debug.Log("outOfRange: " + device.outOfRange);
+		Debug.Log("calibrating: " + device.calibrating);
+		Debug.Log("uninitialized: " + device.uninitialized);
+		Debug.Log("pos: " + device.transform.pos);
+		Debug.Log("rot: " + device.transform.rot.eulerAngles);
+		Debug.Log("velocity: " + device.velocity);
+		Debug.Log("angularVelocity: " + device.angularVelocity);
+
+		var l = SteamVR_Controller.GetDeviceIndex(SteamVR_Controller.DeviceRelation.Leftmost);
+		var r = SteamVR_Controller.GetDeviceIndex(SteamVR_Controller.DeviceRelation.Rightmost);
+		Debug.Log((l == r) ? "first" : (l == index) ? "left" : "right");
+	}
+
+	EVRButtonId[] buttonIds = new EVRButtonId[] {
+		EVRButtonId.k_EButton_ApplicationMenu,
+		EVRButtonId.k_EButton_Grip,
+		EVRButtonId.k_EButton_SteamVR_Touchpad,
+		EVRButtonId.k_EButton_SteamVR_Trigger
+	};
+
+	EVRButtonId[] axisIds = new EVRButtonId[] {
+		EVRButtonId.k_EButton_SteamVR_Touchpad,
+		EVRButtonId.k_EButton_SteamVR_Trigger
+	};
+
+	public Transform point, pointer;
+
+	void Update()
+	{
+		foreach (var index in controllerIndices)
+		{
+			var overlay = SteamVR_Overlay.instance;
+			if (overlay && point && pointer)
+			{
+				var t = SteamVR_Controller.Input(index).transform;
+				pointer.transform.localPosition = t.pos;
+				pointer.transform.localRotation = t.rot;
+
+				var results = new SteamVR_Overlay.IntersectionResults();
+				var hit = overlay.ComputeIntersection(t.pos, t.rot * Vector3.forward, ref results);
+				if (hit)
+				{
+					point.transform.localPosition = results.point;
+					point.transform.localRotation = Quaternion.LookRotation(results.normal);
+				}
+
+				continue;
+			}
+
+			foreach (var buttonId in buttonIds)
+			{
+				if (SteamVR_Controller.Input(index).GetPressDown(buttonId))
+					Debug.Log(buttonId + " press down");
+				if (SteamVR_Controller.Input(index).GetPressUp(buttonId))
+				{
+					Debug.Log(buttonId + " press up");
+					if (buttonId == EVRButtonId.k_EButton_SteamVR_Trigger)
+					{
+						SteamVR_Controller.Input(index).TriggerHapticPulse();
+						PrintControllerStatus(index);
+					}
+				}
+				if (SteamVR_Controller.Input(index).GetPress(buttonId))
+					Debug.Log(buttonId);
+			}
+
+			foreach (var buttonId in axisIds)
+			{
+				if (SteamVR_Controller.Input(index).GetTouchDown(buttonId))
+					Debug.Log(buttonId + " touch down");
+				if (SteamVR_Controller.Input(index).GetTouchUp(buttonId))
+					Debug.Log(buttonId + " touch up");
+				if (SteamVR_Controller.Input(index).GetTouch(buttonId))
+				{
+					var axis = SteamVR_Controller.Input(index).GetAxis(buttonId);
+					Debug.Log("axis: " + axis);
+				}
+			}
+		}
+	}
+}
